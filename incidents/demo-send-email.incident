@@ -1,0 +1,134 @@
+INCIDENT: [demo hilarious] Send an Email (Production Critical)
+
+DESCRIPTION: You are the PM of the most important ecommerce project in your agency. It's Friday evening and you're drinking your second aperitif in complete relaxation. Your boss calls: "The intern broke production with a deploy. The website is down. I’m going to the beach. You handle it!" You must immediately notify the client via email. Good luck!
+
+MAX_POINTS: 100
+
+START
+text:
+Production is down. Your laptop is turned off and your cell phone is out of battery.
+
+ACTIONS
+1 Turn on your computer -> power_on [points=10]
+2 Send email immediately -> send_direct [points=-20]
+3 Ignore the call -> ignore [points=-50]
+4 Google how to send email -> google_it [points=-5]
+
+---
+
+NODE power_on
+terminal:
+$ power on
+Booting system...
+Loading OS...
+
+ACTIONS
+1 Open email client -> open_mail [points=20]
+2 Shut down computer -> shutdown [points=-30]
+
+---
+
+NODE open_mail
+terminal:
+$ open mail_client
+Mail client started.
+Inbox: 23 unread messages (mostly useless)
+
+ACTIONS
+1 Compose new email -> compose [points=30]
+2 Read old emails -> read_old [points=-10]
+
+---
+
+NODE compose
+terminal:
+$ compose
+To:
+Subject:
+Body:
+
+ACTIONS
+2 Send without recipient -> missing_recipient [points=-40]
+1 Fill all fields and send -> send_email [points=40]
+
+---
+
+NODE send_email
+terminal:
+Sending email...
+Subject: Production outage
+To: client@company.com
+
+Email sent successfully.
+Client is informed.
+Boss is already at the beach.
+
+END SUCCESS
+
+---
+
+NODE send_direct
+text:
+You can't: your laptop is turned off and your cell phone is out of battery.
+
+ACTIONS
+1 Turn on your computer -> power_on [points=10]
+2 Order the third aperitif -> ignore [points=-50]
+2 Google how to send email -> google_it [points=-5]
+
+---
+
+NODE ignore
+text:
+You finish your drinks.
+Your cell phone is completely dead and you can't see the countless further calls from your boss.
+Client finds out from social media.
+You probably won't be back at work on Monday...
+
+END FAILURE
+
+---
+
+NODE shutdown
+terminal:
+$ shutdown
+System going offline...
+You feel productive.
+
+END FAILURE
+
+---
+
+NODE read_old
+terminal:
+$ open inbox
+You spend 15 minutes reading newsletters.
+Still no email sent.
+
+END FAILURE
+
+---
+
+NODE missing_recipient
+terminal:
+$ send
+Error: no recipient specified
+
+END FAILURE
+
+---
+
+NODE google_it
+terminal:
+$ google "how to send email"
+Opening browser...
+Top results:
+- "Email explained for non-technical users"
+- "Do aliens exist?"
+- "How to send an email in 2026 (Beginner Guide)"
+- "What is an email?"
+You read 3 articles.
+You feel slightly insulted.
+No email has been sent.
+
+END FAILURE

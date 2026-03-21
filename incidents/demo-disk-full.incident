@@ -1,0 +1,106 @@
+INCIDENT: [demo] Disk Full
+
+DESCRIPTION: Production server is returning errors due to disk exhaustion. Multiple services are failing intermittently. You need to identify the cause and restore disk availability.
+
+MAX_POINTS: 100
+
+START
+terminal:
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       100G   99G    1G 100% /
+ACTIONS
+1 Check docker usage -> docker_usage [points=10]
+2 Inspect logs -> inspect_logs [points=5]
+3 Reboot server -> reboot [points=-10]
+
+---
+
+NODE docker_usage
+terminal:
+$ docker system df
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          45        12        35.1GB    34.2GB (97%)
+Containers      8         4         1.2MB     0B (0%)
+Local Volumes   12        2         5.4GB     3.1GB (57%)
+ACTIONS
+1 Prune unused images -> prune [points=80]
+2 Ignore problem -> ignore [points=-30]
+
+---
+
+NODE prune
+terminal:
+$ docker image prune -a
+WARNING! This will remove all dangling and unreferenced images.
+Are you sure? y
+Deleted Images:
+35.1GB
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       100G   64G   36G  64% /
+END SUCCESS
+
+---
+
+NODE ignore
+logs:
+Disk continues filling up...
+Applications failing due to no disk space.
+Logs show repeated errors:
+"No space left on device"
+Database connections failing.
+END FAILURE
+
+---
+
+NODE inspect_logs
+terminal:
+$ tail -100 /var/log/syslog
+Mar 14 10:23:01 server1 kernel: [12345.678901] EXT4-fs warning: device is full
+Mar 14 10:23:15 server1 dockerd[1234]: level=warning msg="disk space usage high"
+Mar 14 10:24:00 server1 nginx[5678]: open() "/var/log/nginx/access.log" failed (28: No space left on device)
+ACTIONS
+1 Clear old logs -> clear_logs [points=20]
+2 Check for large files -> large_files [points=30]
+
+---
+
+NODE clear_logs
+terminal:
+$ rm -rf /var/log/*.gz
+$ systemctl restart rsyslog
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       100G   92G    8G  92% /
+END SUCCESS
+
+---
+
+NODE large_files
+terminal:
+$ du -sh /* 2>/dev/null | sort -rh | head -10
+72G     /var/log
+15G     /tmp
+8G      /opt/data
+$ find /var/log -type f -size +100M
+/var/log/syslog.1
+/var/log/kern.log.1
+/var/log/nginx/error.log.1
+logs:
+Large log files identified, but root cause not fully addressed.
+END SUCCESS
+
+---
+
+NODE reboot
+terminal:
+$ reboot
+Connection to server lost.
+... reconnecting ...
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       100G   65G   35G  65% /
+Note: Disk appeared full due to a process holding deleted file handles.
+Reboot temporarily resolves the issue, but root cause is unclear.
+END SUCCESS

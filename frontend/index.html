@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Incident Game</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <link rel="stylesheet" href="/static/css/terminal.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Production Incident Game</h1>
+            <p class="subtitle">Debug real production failures</p>
+        </header>
+        
+        <div id="terminal-container"></div>
+        
+        <div id="status-bar">
+            <span id="connection-status">Connecting...</span>
+            <span id="current-scenario"></span>
+            <span id="current-attempt"></span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="/static/js/game.js"></script>
+</body>
+</html>
