@@ -1,4 +1,6 @@
 const API_BASE = "/api/v1";
+import { Renderer, DesktopRenderer } from './Renderer.js';
+import { MobileRenderer } from './MobileRenderer.js';
 
 let anonymousId = null;
 
@@ -45,9 +47,8 @@ function writeOutput(term, text) {
 }
 
 class GameClient {
-    constructor() {
-        this.terminal = null;
-        this.fitAddon = null;
+    constructor(renderer = null) {
+        this.renderer = renderer || new DesktopRenderer();
         this.currentScenario = null;
         this.connected = false;
         this.currentAttemptId = null;
@@ -61,67 +62,114 @@ class GameClient {
         this.availableScenarios = [];
     }
 
+    get terminal() {
+        return this.renderer.terminal;
+    }
+
     printSeparator() {
-        this.terminal.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
     }
 
     printTerminalCommand(command) {
-        this.terminal.writeln(`\x1b[32m$ ${command}\x1b[0m`);
+        this.renderer.writeln(`\x1b[32m$ ${command}\x1b[0m`);
     }
 
     printTerminalOutput(output) {
-        this.terminal.writeln(`\x1b[38;5;245m${output}\x1b[0m`);
+        this.renderer.writeln(`\x1b[38;5;245m${output}\x1b[0m`);
     }
 
     printTerminalBlock(command, output) {
-        this.terminal.writeln('');
-        this.terminal.writeln(`\x1b[32m$ ${command}\x1b[0m`);
-        this.terminal.writeln(`\x1b[38;5;245m${output}\x1b[0m`);
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln(`\x1b[32m$ ${command}\x1b[0m`);
+        this.renderer.writeln(`\x1b[38;5;245m${output}\x1b[0m`);
+        this.renderer.writeln('');
     }
 
     printHeader(title) {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
-        this.terminal.writeln(`\x1b[36m\x1b[1m ${title}\x1b[0m`);
-        this.terminal.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln(`\x1b[36m\x1b[1m ${title}\x1b[0m`);
+        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
     }
 
-    printNode(node) {
+    _renderNodeTerminal(node) {
         if (!node) return;
 
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
         const nodeName = node.id || node.name || node.title || "scenario";
-        this.terminal.writeln(`\x1b[36mNODE: ${nodeName}\x1b[0m`);
-        this.terminal.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln(`\x1b[36mNODE: ${nodeName}\x1b[0m`);
+        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('');
 
         if (node.content) {
-            writeOutput(this.terminal, node.content);
+            writeOutput(this.renderer, node.content);
         }
 
-        this.terminal.writeln('');
+        this.renderer.writeln('');
     }
 
-    printActions(actions) {
+    _renderActionsTerminal(actions) {
         this.currentActions = actions || [];
 
         if (this.currentActions.length === 0) {
             return;
         }
 
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[36mAVAILABLE ACTIONS\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36mAVAILABLE ACTIONS\x1b[0m');
+        this.renderer.writeln('');
 
         this.currentActions.forEach((action, index) => {
             const label = action.label || `Action ${index + 1}`;
-            this.terminal.writeln(`[${index + 1}] ${label}`);
+            this.renderer.writeln(`[${index + 1}] ${label}`);
         });
 
-        this.terminal.writeln('');
-        this.terminal.write('\x1b[32mSelect action >\x1b[0m ');
+        this.renderer.writeln('');
+        this.renderer.write('\x1b[32mSelect action >\x1b[0m ');
+    }
+
+    printNode(node, scenarioDescription = null) {
+        if (this.renderer.printNode) {
+            this.renderer.printNode(node, scenarioDescription);
+        } else {
+            this._renderNodeTerminal(node);
+        }
+    }
+
+    printActions(actions) {
+        this.currentActions = actions || [];
+        if (this.renderer.printActions) {
+            this.renderer.printActions(this.currentActions);
+        } else {
+            this._renderActionsTerminal(this.currentActions);
+        }
+    }
+
+    printWelcome() {
+        if (this.renderer.printWelcome) {
+            this.renderer.printWelcome();
+        } else {
+            this._renderWelcomeTerminal();
+        }
+    }
+
+    _renderWelcomeTerminal() {
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m     PRODUCTION INCIDENT GAME                \x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m     Test your debugging skills              \x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[38;5;245mHandle realistic production incidents.');
+        this.renderer.writeln('Make the right calls. Learn from the best.\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.write('\x1b[32mPress Enter to continue...\x1b[0m ');
+    }
+
+    showWelcome() {
+        this.gameState = 'welcome';
+        this.printWelcome();
     }
 
     getFeedbackMessage(ratio) {
@@ -161,11 +209,7 @@ class GameClient {
     }
 
     async typeText(text, speed = 15) {
-        for (const char of text) {
-            this.terminal.write(char);
-            await new Promise(r => setTimeout(r, speed));
-        }
-        this.terminal.writeln("");
+        await this.renderer.typeText(text, speed);
     }
 
     printPrompt() {
@@ -175,51 +219,17 @@ class GameClient {
 
     async init() {
         getAnonymousId();
-        
-        this.terminal = new Terminal({
-            cursorBlink: true,
-            fontSize: 15,
-            fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
-            fontWeight: 'normal',
-            lineHeight: 1.35,
-            theme: {
-                background: '#0d1117',
-                foreground: '#e6edf3',
-                cursor: '#00ff9c',
-                selectionBackground: '#264f78',
-                black: '#484f58',
-                red: '#ff7b72',
-                green: '#3fb950',
-                yellow: '#d29922',
-                blue: '#58a6ff',
-                magenta: '#bc8cff',
-                cyan: '#39c5cf',
-                white: '#e6edf3',
-                brightBlack: '#6e7681',
-                brightRed: '#ffa198',
-                brightGreen: '#56d364',
-                brightYellow: '#e3b341',
-                brightBlue: '#79c0ff',
-                brightMagenta: '#d2a8ff',
-                brightCyan: '#56d4dd',
-                brightWhite: '#f0f6fc'
-            },
-            allowTransparency: true
-        });
 
-        this.fitAddon = new FitAddon.FitAddon();
-        this.terminal.loadAddon(this.fitAddon);
-        this.terminal.open(document.getElementById('terminal-container'));
-        this.fitAddon.fit();
-
-        window.addEventListener('resize', () => this.fitAddon.fit());
-
-        this.terminal.onData((data) => this.handleUserInput(data));
-
-        setTimeout(() => this.focusTerminal(), 100);
+        this.renderer.onInput((data) => this.handleUserInput(data));
 
         await this.connect();
-        await this.showBootSequence();
+        if (this.renderer.printWelcome) {
+            this.showWelcome();
+        } else if (this.renderer.renderScenarios) {
+            await this.loadScenarios();
+        } else {
+            await this.showBootSequence();
+        }
     }
 
     async connect() {
@@ -259,9 +269,7 @@ class GameClient {
     }
 
     focusTerminal() {
-        if (this.terminal) {
-            this.terminal.focus();
-        }
+        this.renderer.focusTerminal();
     }
 
     async showBootSequence() {
@@ -270,27 +278,27 @@ class GameClient {
         await this.typeText('\x1b[36mConnecting to backend...\x1b[0m', 20);
         await this.typeText('\x1b[32mEnvironment ready.\x1b[0m', 30);
 
-        this.terminal.writeln('');
+        this.renderer.writeln('');
 
         await this.loadScenarios();
     }
 
-    renderScenarios() {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[36mAVAILABLE SCENARIOS\x1b[0m');
-        this.terminal.writeln('');
+    _renderScenariosTerminal() {
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36mAVAILABLE SCENARIOS\x1b[0m');
+        this.renderer.writeln('');
 
         this.availableScenarios.forEach((s, i) => {
-            this.terminal.writeln(`[${i + 1}] ${s.title}`);
+            this.renderer.writeln(`[${i + 1}] ${s.title}`);
             if (s.description) {
                 const firstSentence = s.description.split('.')[0];
                 const truncated = firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence + '...';
-                this.terminal.writeln(`\x1b[38;5;245m    ${truncated}\x1b[0m`);
+                this.renderer.writeln(`\x1b[38;5;245m    ${truncated}\x1b[0m`);
             }
         });
 
-        this.terminal.writeln('');
-        this.terminal.write('\x1b[32mSelect scenario > \x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.write('\x1b[32mSelect scenario > \x1b[0m');
     }
 
     async loadScenarios() {
@@ -305,19 +313,28 @@ class GameClient {
 
             this.availableScenarios = data || [];
 
-            this.renderScenarios();
+            if (this.renderer.renderScenarios) {
+                this.renderer.renderScenarios(this.availableScenarios);
+            } else {
+                this._renderScenariosTerminal();
+            }
 
             this.gameState = 'selecting_scenario';
 
         } catch (e) {
-            this.terminal.writeln('\x1b[31mERROR loading scenarios\x1b[0m');
+            this.renderer.writeln('\x1b[31mERROR loading scenarios\x1b[0m');
         }
     }
 
-    async startScenario(scenarioTitle) {
+    async startScenario(scenarioTitle, scenarioDescription = null) {
+        console.log('[GameClient] startScenario called:', scenarioTitle);
         this.currentScenarioTitle = scenarioTitle;
-        this.terminal.writeln(`\x1b[36m▶ Starting scenario:\x1b[0m ${scenarioTitle}`);
-        this.terminal.writeln('');
+        const isTerminal = !this.renderer.printNode;
+
+        if (isTerminal) {
+            this.renderer.writeln(`\x1b[36m▶ Starting scenario:\x1b[0m ${scenarioTitle}`);
+            this.renderer.writeln('');
+        }
 
         const scenario = this.availableScenarios.find(s => (s.id || s.title) === scenarioTitle);
 
@@ -339,42 +356,59 @@ class GameClient {
             this.gameState = 'playing';
             this.updateAttemptDisplay();
 
-            const scenarioDesc = scenario ? scenario.description : null;
-            if (scenarioDesc) {
-                this.terminal.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
-                this.terminal.writeln('\x1b[36mDescription:\x1b[0m');
-                this.terminal.writeln(scenarioDesc);
-                this.terminal.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
+            if (isTerminal) {
+                const scenarioDesc = scenario ? scenario.description : null;
+                if (scenarioDesc) {
+                    this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
+                    this.renderer.writeln('\x1b[36mDescription:\x1b[0m');
+                    this.renderer.writeln(scenarioDesc);
+                    this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
+                }
+                this.renderer.writeln('');
             }
 
-            this.terminal.writeln('');
-            this.printNode(data.node);
+            if (this.renderer.printNode && scenarioDescription) {
+                this.printNode(data.node, scenarioDescription);
+            } else {
+                this.printNode(data.node);
+            }
             this.printActions(data.actions);
-            this.printPrompt();
-            this.focusTerminal();
+
+            if (isTerminal) {
+                this.printPrompt();
+                this.focusTerminal();
+            }
 
         } catch (error) {
-            this.terminal.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
-            this.terminal.writeln('');
+            this.renderer.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
+            this.renderer.writeln('');
         }
     }
 
     handleUserInput(data) {
         const charCode = data.charCodeAt(0);
 
-        if (this.gameState === 'selecting_scenario') {
-
-            const charCode = data.charCodeAt(0);
-
+        if (this.gameState === 'welcome') {
             if (charCode === 13) {
-                this.terminal.writeln('');
+                this.renderer.writeln('');
+                this.inputBuffer = '';
+                this.loadScenarios();
+                return;
+            }
+        }
+
+        if (this.gameState === 'selecting_scenario') {
+            if (charCode === 13) {
+                this.renderer.writeln('');
 
                 const choice = parseInt(this.inputBuffer);
 
                 if (!choice || choice < 1 || choice > this.availableScenarios.length) {
-                    this.terminal.writeln('\x1b[31mInvalid selection. Please choose a valid scenario.\x1b[0m');
-                    this.renderScenarios();
-                    this.inputBuffer = '';
+                    this.renderer.writeln('\x1b[31mInvalid choice, please try again.\x1b[0m');
+                    this._renderScenariosTerminal();
+                    if (this.inputBuffer) {
+                        this.renderer.write(this.inputBuffer);
+                    }
                     return;
                 }
 
@@ -389,13 +423,13 @@ class GameClient {
 
             if (charCode === 127) {
                 this.inputBuffer = this.inputBuffer.slice(0, -1);
-                this.terminal.write('\b \b');
+                this.renderer.write('\b \b');
                 return;
             }
 
             if (charCode >= 48 && charCode <= 57) {
                 this.inputBuffer += data;
-                this.terminal.write(data);
+                this.renderer.write(data);
             }
 
             return;
@@ -408,19 +442,19 @@ class GameClient {
 
             // ENTER
             if (charCode === 13) {
-                this.terminal.writeln('');
+                this.renderer.writeln('');
 
                 const explanation = (this.inputBuffer || '').trim();
 
                 if (explanation.length > 0) {
                     this.submitExplanation(explanation);
-                    this.terminal.writeln('\x1b[38;5;245mThanks for your explanation!\x1b[0m');
+                    this.renderer.writeln('\x1b[38;5;245mThanks for your explanation!\x1b[0m');
                 } else {
-                    this.terminal.writeln('\x1b[38;5;245m(No explanation provided)\x1b[0m');
+                    this.renderer.writeln('\x1b[38;5;245m(No explanation provided)\x1b[0m');
                 }
 
-                this.terminal.writeln('');
-                this.terminal.writeln('\x1b[38;5;245mRefresh page to play again.\x1b[0m');
+                this.renderer.writeln('');
+                this.renderer.writeln('\x1b[38;5;245mRefresh page to play again.\x1b[0m');
 
                 // RESET
                 this.inputBuffer = '';
@@ -433,13 +467,13 @@ class GameClient {
             if (charCode === 127) {
                 if (this.inputBuffer.length > 0) {
                     this.inputBuffer = this.inputBuffer.slice(0, -1);
-                    this.terminal.write('\b \b');
+                    this.renderer.write('\b \b');
                 }
                 return;
             }
 
             this.inputBuffer += data;
-            this.terminal.write(data);
+            this.renderer.write(data);
 
             return;
         }
@@ -453,7 +487,7 @@ class GameClient {
 
         // ENTER
         if (charCode === 13) {
-            this.terminal.writeln('');
+            this.renderer.writeln('');
             this.processInput();
             return;
         }
@@ -462,7 +496,7 @@ class GameClient {
         if (charCode === 127) {
             if (this.inputBuffer.length > 0) {
                 this.inputBuffer = this.inputBuffer.slice(0, -1);
-                this.terminal.write('\b \b');
+                this.renderer.write('\b \b');
             }
             return;
         }
@@ -476,7 +510,7 @@ class GameClient {
             charCode === 95 // underscore
         ) {
             this.inputBuffer += data;
-            this.terminal.write(data);
+            this.renderer.write(data);
         }
     }
 
@@ -484,19 +518,19 @@ class GameClient {
         const input = this.inputBuffer.trim();
         
         if (input === 'help') {
-            this.terminal.writeln('');
-            this.terminal.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
-            this.terminal.writeln('\x1b[1;36mAVAILABLE COMMANDS\x1b[0m');
-            this.terminal.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
-            this.terminal.writeln('');
-            this.terminal.writeln('start           → start a scenario - TBD');
-            this.terminal.writeln('daily           → show today\'s incident');
-            this.terminal.writeln('start-daily     → start daily challenge');
-            this.terminal.writeln('leaderboard     → show ranking');
-            this.terminal.writeln('history         → show past attempts');
-            this.terminal.writeln('replay          → replay last attempt - TBD');
-            this.terminal.writeln('help            → show this help message');
-            this.terminal.writeln('');
+            this.renderer.writeln('');
+            this.renderer.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[1;36mAVAILABLE COMMANDS\x1b[0m');
+            this.renderer.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
+            this.renderer.writeln('');
+            this.renderer.writeln('start           → start a scenario - TBD');
+            this.renderer.writeln('daily           → show today\'s incident');
+            this.renderer.writeln('start-daily     → start daily challenge');
+            this.renderer.writeln('leaderboard     → show ranking');
+            this.renderer.writeln('history         → show past attempts');
+            this.renderer.writeln('replay          → replay last attempt - TBD');
+            this.renderer.writeln('help            → show this help message');
+            this.renderer.writeln('');
             this.printPrompt();
             this.focusTerminal();
             return;
@@ -552,7 +586,7 @@ class GameClient {
                 await this.submitAction(matchedAction.id);
                 return;
             } else {
-                this.terminal.writeln('\x1b[31mInvalid input. Please enter a number.\x1b[0m');
+                this.renderer.writeln('\x1b[31mInvalid input. Please enter a number.\x1b[0m');
                 this.printActions(this.currentActions);
                 this.printPrompt();
                 this.focusTerminal();
@@ -563,7 +597,7 @@ class GameClient {
         const choice = parseInt(input, 10);
 
         if (isNaN(choice) || choice < 1 || choice > this.currentActions.length) {
-            this.terminal.writeln('\x1b[31mInvalid choice. Select a valid option.\x1b[0m');
+            this.renderer.writeln('\x1b[31mInvalid choice. Select a valid option.\x1b[0m');
             this.printActions(this.currentActions);
             this.printPrompt();
             this.focusTerminal();
@@ -581,52 +615,52 @@ class GameClient {
     }
     
     showHistory() {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[1;36mATTEMPT HISTORY\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[1;36mATTEMPT HISTORY\x1b[0m');
+        this.renderer.writeln('');
         
         const attempts = Object.keys(this.attempts);
         if (attempts.length === 0) {
-            this.terminal.writeln('\x1b[38;5;245mNo attempts recorded yet.\x1b[0m');
+            this.renderer.writeln('\x1b[38;5;245mNo attempts recorded yet.\x1b[0m');
             return;
         }
         
         attempts.forEach(attemptId => {
-            this.terminal.writeln(`\x1b[36m${attemptId}\x1b[0m`);
+            this.renderer.writeln(`\x1b[36m${attemptId}\x1b[0m`);
         });
         
-        this.terminal.writeln('');
+        this.renderer.writeln('');
     }
     
     async replayAttempt(attemptId) {
         const actions = this.attempts[attemptId];
         if (!actions || actions.length === 0) {
-            this.terminal.writeln(`\x1b[31mNo actions found for attempt: ${attemptId}\x1b[0m`);
-            this.terminal.writeln('');
+            this.renderer.writeln(`\x1b[31mNo actions found for attempt: ${attemptId}\x1b[0m`);
+            this.renderer.writeln('');
             this.printPrompt();
             this.focusTerminal();
             return;
         }
         
-        this.terminal.writeln(`\x1b[36mReplaying attempt: ${attemptId}\x1b[0m`);
-        this.terminal.writeln('');
+        this.renderer.writeln(`\x1b[36mReplaying attempt: ${attemptId}\x1b[0m`);
+        this.renderer.writeln('');
         
         for (const record of actions) {
-            this.terminal.writeln(`\x1b[38;5;245m> ${record.action}\x1b[0m`);
+            this.renderer.writeln(`\x1b[38;5;245m> ${record.action}\x1b[0m`);
             await new Promise(r => setTimeout(r, 500));
         }
         
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[32mReplay complete.\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[32mReplay complete.\x1b[0m');
+        this.renderer.writeln('');
         this.printPrompt();
         this.focusTerminal();
     }
 
     async showLeaderboard() {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[1;36mGLOBAL INCIDENT LEADERBOARD\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[1;36mGLOBAL INCIDENT LEADERBOARD\x1b[0m');
+        this.renderer.writeln('');
 
         try {
             const response = await fetch(`${API_BASE}/leaderboard`);
@@ -637,25 +671,25 @@ class GameClient {
             const data = await response.json();
             
             if (data.leaders.length === 0) {
-                this.terminal.writeln('\x1b[38;5;245mNo solvers yet. Be the first!\x1b[0m');
+                this.renderer.writeln('\x1b[38;5;245mNo solvers yet. Be the first!\x1b[0m');
                 return;
             }
 
             data.leaders.forEach((leader, index) => {
                 const rank = index + 1;
-                this.terminal.writeln(`${rank}. ${leader.user.padEnd(12)} ${leader.solved} solved`);
+                this.renderer.writeln(`${rank}. ${leader.user.padEnd(12)} ${leader.solved} solved`);
             });
         } catch (error) {
-            this.terminal.writeln('\x1b[31mERROR: Unable to fetch leaderboard\x1b[0m');
+            this.renderer.writeln('\x1b[31mERROR: Unable to fetch leaderboard\x1b[0m');
         }
     }
 
     async showDailyChallenge() {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[1;36m==================================================\x1b[0m');
-        this.terminal.writeln('\x1b[1;36m         INCIDENT OF THE DAY                     \x1b[0m');
-        this.terminal.writeln('\x1b[1;36m==================================================\x1b[0m');
-        this.terminal.writeln('');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[1;36m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[1;36m         INCIDENT OF THE DAY                     \x1b[0m');
+        this.renderer.writeln('\x1b[1;36m==================================================\x1b[0m');
+        this.renderer.writeln('');
 
         try {
             const response = await fetch(`${API_BASE}/daily`);
@@ -665,18 +699,22 @@ class GameClient {
 
             const data = await response.json();
             
-            this.terminal.writeln(`\x1b[1;37mScenario:\x1b[0m ${data.scenario}`);
-            this.terminal.writeln(`\x1b[1;37mDifficulty:\x1b[0m ${data.difficulty}`);
-            this.terminal.writeln('');
-            this.terminal.writeln('\x1b[38;5;245mType "start daily" to begin.\x1b[0m');
+            this.renderer.writeln(`\x1b[1;37mScenario:\x1b[0m ${data.scenario}`);
+            this.renderer.writeln(`\x1b[1;37mDifficulty:\x1b[0m ${data.difficulty}`);
+            this.renderer.writeln('');
+            this.renderer.writeln('\x1b[38;5;245mType "start daily" to begin.\x1b[0m');
         } catch (error) {
-            this.terminal.writeln('\x1b[31mERROR: Unable to fetch daily challenge\x1b[0m');
+            this.renderer.writeln('\x1b[31mERROR: Unable to fetch daily challenge\x1b[0m');
         }
     }
 
     async startDailyChallenge() {
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[38;5;245mStarting daily challenge...\x1b[0m');
+        const isTerminal = !this.renderer.printNode;
+
+        if (isTerminal) {
+            this.renderer.writeln('');
+            this.renderer.writeln('\x1b[38;5;245mStarting daily challenge...\x1b[0m');
+        }
 
         try {
             const response = await fetch(`${API_BASE}/daily/start`, {
@@ -699,31 +737,40 @@ class GameClient {
 
             this.printNode(data.node);
             this.printActions(data.actions);
-            this.printPrompt();
-            this.focusTerminal();
+
+            if (isTerminal) {
+                this.printPrompt();
+                this.focusTerminal();
+            }
 
         } catch (error) {
-            this.terminal.writeln('\x1b[31mERROR: Unable to start daily challenge\x1b[0m');
-            this.terminal.writeln('');
-            this.printPrompt();
-            this.focusTerminal();
+            if (isTerminal) {
+                this.renderer.writeln('\x1b[31mERROR: Unable to start daily challenge\x1b[0m');
+                this.renderer.writeln('');
+                this.printPrompt();
+                this.focusTerminal();
+            }
         }
     }
 
     async submitAction(actionId) {
-        this.terminal.writeln('');
-        this.terminal.write('\x1b[38;5;245m→ Executing action...\x1b[0m');
-        
-        await new Promise(r => setTimeout(r, 150));
-        this.terminal.write('.');
-        await new Promise(r => setTimeout(r, 150));
-        this.terminal.write('.');
-        await new Promise(r => setTimeout(r, 150));
-        this.terminal.write('.');
-        await new Promise(r => setTimeout(r, 150));
-        
-        this.terminal.writeln('');
-        this.terminal.writeln('');
+        const isTerminal = !this.renderer.printNode;
+
+        if (isTerminal) {
+            this.renderer.writeln('');
+            this.renderer.write('\x1b[38;5;245m→ Executing action...\x1b[0m');
+            
+            await new Promise(r => setTimeout(r, 150));
+            this.renderer.write('.');
+            await new Promise(r => setTimeout(r, 150));
+            this.renderer.write('.');
+            await new Promise(r => setTimeout(r, 150));
+            this.renderer.write('.');
+            await new Promise(r => setTimeout(r, 150));
+            
+            this.renderer.writeln('');
+            this.renderer.writeln('');
+        }
 
         try {
             const response = await fetch(
@@ -746,64 +793,75 @@ class GameClient {
                 this.printCompletion(data.score, this.currentMaxPoints, data.best_explanation || null, data.path || null, data.message || null);
             } else {
                 this.printActions(data.actions);
-                this.printPrompt();
-                this.focusTerminal();
+                if (isTerminal) {
+                    this.printPrompt();
+                    this.focusTerminal();
+                }
             }
 
         } catch (error) {
-            this.terminal.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
-            this.terminal.writeln('');
-            this.printPrompt();
-            this.focusTerminal();
+            if (isTerminal) {
+                this.renderer.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
+                this.renderer.writeln('');
+                this.printPrompt();
+                this.focusTerminal();
+            }
         }
     }
 
     printCompletion(score, maxPoints, bestExplanation = null, path = null, message = null) {
         this.gameState = 'completed';
 
+        if (this.renderer.printCompletion) {
+            this.renderer.printCompletion(score, maxPoints, bestExplanation, path, message);
+            this.completionScore = score;
+            this.bestExplanation = bestExplanation;
+            return;
+        }
+
         const ratio = maxPoints > 0 ? score / maxPoints : 0;
         const feedback = this.getFeedbackMessage(ratio) || "Scenario complete.";
 
         this.printHeader('INCIDENT RESULT');
         
-        this.terminal.writeln('');
+        this.renderer.writeln('');
         if (ratio < 0.40) {
-            this.terminal.writeln(`\x1b[31mScore: ${score} / ${maxPoints}\x1b[0m`);
+            this.renderer.writeln(`\x1b[31mScore: ${score} / ${maxPoints}\x1b[0m`);
         } else {
-            this.terminal.writeln(`\x1b[32mScore: ${score} / ${maxPoints}\x1b[0m`);
+            this.renderer.writeln(`\x1b[32mScore: ${score} / ${maxPoints}\x1b[0m`);
         }
-        this.terminal.writeln('');
+        this.renderer.writeln('');
         
         if (message) {
-            this.terminal.writeln('\x1b[31mResult: FAILURE\x1b[0m');
-            this.terminal.writeln(`Reason: ${message}`);
+            this.renderer.writeln('\x1b[31mResult: FAILURE\x1b[0m');
+            this.renderer.writeln(`Reason: ${message}`);
         }
         
-        this.terminal.writeln(`\x1b[38;5;245m${feedback}\x1b[0m`);
-        this.terminal.writeln('');
+        this.renderer.writeln(`\x1b[38;5;245m${feedback}\x1b[0m`);
+        this.renderer.writeln('');
         this.printSeparator();
 
         if (path && path.length > 0) {
-            this.terminal.writeln('');
-            this.terminal.writeln('\x1b[36m\x1b[1mYour path:\x1b[0m');
-            this.terminal.writeln(`\x1b[32m${path.join(' \x1b[36m→\x1b[32m ')}\x1b[0m`);
+            this.renderer.writeln('');
+            this.renderer.writeln('\x1b[36m\x1b[1mYour path:\x1b[0m');
+            this.renderer.writeln(`\x1b[32m${path.join(' \x1b[36m→\x1b[32m ')}\x1b[0m`);
         }
 
         if (bestExplanation) {
-            this.terminal.writeln('');
-            this.terminal.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
-            this.terminal.writeln('\x1b[36mTOP SOLUTION\x1b[0m');
-            this.terminal.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
-            this.terminal.writeln('');
-            this.terminal.writeln(bestExplanation);
-            this.terminal.writeln('');
+            this.renderer.writeln('');
+            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[36mTOP SOLUTION\x1b[0m');
+            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
+            this.renderer.writeln('');
+            this.renderer.writeln(bestExplanation);
+            this.renderer.writeln('');
         }
 
-        this.terminal.writeln('');
-        this.terminal.writeln('\x1b[36m\x1b[1mExplain briefly what caused the incident and why your solution worked.\x1b[0m');
-        this.terminal.writeln('\x1b[38;5;245mMaximum 500 characters, no links allowed.\x1b[0m');
-        this.terminal.writeln('');
-        this.terminal.write('\x1b[32mexplain > \x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36m\x1b[1mExplain briefly what caused the incident and why your solution worked.\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245mMaximum 500 characters, no links allowed.\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.write('\x1b[32mexplain > \x1b[0m');
 
         this.gameState = 'explaining';
         this.inputBuffer = '';
@@ -827,19 +885,37 @@ class GameClient {
     }
 }
 
-if (typeof module !== "undefined") {
-    module.exports = { GameClient };
-}
+export { GameClient };
 
 document.addEventListener('DOMContentLoaded', () => {
-    const client = new GameClient();
+    const isMobile = window.innerWidth < 768;
+
+    let renderer;
+    if (isMobile) {
+        renderer = new MobileRenderer();
+    } else {
+        renderer = new DesktopRenderer();
+    }
+
+    const client = new GameClient(renderer);
+
+    if (isMobile) {
+        renderer.onWelcome(() => client.loadScenarios());
+        renderer.onScenarioSelect((id, desc) => client.startScenario(id, desc));
+        renderer.onActionSubmit((actionId) => client.submitAction(actionId));
+        renderer.onExplanationSubmit((exp) => client.submitExplanation(exp));
+        renderer.onPlayAgain(() => window.location.reload());
+    }
+
     client.init();
-    
-    window.addEventListener('load', () => {
-        client.focusTerminal();
-    });
-    
-    window.addEventListener('click', () => {
-        client.focusTerminal();
-    });
+
+    if (!isMobile) {
+        window.addEventListener('load', () => {
+            client.focusTerminal();
+        });
+
+        window.addEventListener('click', () => {
+            client.focusTerminal();
+        });
+    }
 });

@@ -124,6 +124,22 @@ header::before {
     }
 }
 
+#desktop-container {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    width: 100%;
+    background: #0d1117;
+    border: none;
+    overflow: hidden;
+}
+
+@media (max-width: 767px) {
+    #desktop-container {
+        display: none;
+    }
+}
+
 @keyframes blink {
     50% { opacity: 0; }
 }
