@@ -62,10 +62,10 @@ class ScenarioGraph(BaseModel):
 
 @router.get("/", response_model=list[ScenarioSummary])
 def list_scenarios(db: Session = Depends(get_db)):
-    """List available scenarios (only active ones, sorted by slug)."""
+    """List available scenarios (only active ones, sorted by id)."""
     scenarios = db.query(Scenario).filter(
         Scenario.is_active == True
-    ).order_by(Scenario.slug).all()
+    ).order_by(Scenario.id).all()
 
     results = []
     for s in scenarios:
