@@ -827,6 +827,10 @@ class GameClient {
     }
 }
 
+if (typeof module !== "undefined") {
+    module.exports = { GameClient };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const client = new GameClient();
     client.init();
