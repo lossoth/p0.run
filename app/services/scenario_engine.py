@@ -191,9 +191,6 @@ class ScenarioEngine:
 
         path = []
         for action in attempt_actions:
-            node = self.db.query(Node).filter(Node.id == action.node_id).first()
-            if node:
-                path.append(node.title)
             path.append(action.action_label)
 
         return path

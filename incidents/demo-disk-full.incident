@@ -1,6 +1,9 @@
 INCIDENT: [demo] Disk Full
 
-DESCRIPTION: Production server is returning errors due to disk exhaustion. Multiple services are failing intermittently. You need to identify the cause and restore disk availability.
+DESCRIPTION:
+Production server is returning errors due to disk exhaustion.
+Multiple services are failing intermittently.
+You need to identify the cause and restore disk availability.
 
 MAX_POINTS: 100
 

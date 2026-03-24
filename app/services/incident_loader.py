@@ -83,23 +83,69 @@ class IncidentParser:
         description = None
         max_points = None
         
-        for i, line in enumerate(self.lines):
-            stripped = line.strip()
+        i = 0
+        while i < len(self.lines):
+            stripped = self.lines[i].strip()
             if stripped.startswith("INCIDENT:"):
                 title = stripped.split("INCIDENT:")[1].strip()
+                i += 1
             elif stripped.startswith("DESCRIPTION:"):
-                description = stripped.split("DESCRIPTION:")[1].strip()
+                description = self._parse_multiline_section(i, ["MAX_POINTS:"])
+                i = self.pos
             elif stripped.startswith("MAX_POINTS:"):
                 max_points_str = stripped.replace("MAX_POINTS:", "").strip()
                 try:
                     max_points = int(max_points_str)
                 except ValueError:
                     raise ValueError(f"Invalid MAX_POINTS value: '{max_points_str}'. Must be an integer.")
+                i += 1
+            else:
+                i += 1
         
         if max_points is None:
             raise ValueError("MAX_POINTS is required in incident file.")
         
         return title, description, max_points
+    
+    def _parse_multiline_section(self, start_pos: int, end_markers: List[str]) -> str:
+        """Parse a multiline section starting from start_pos until hitting end_markers."""
+        content_parts = []
+        self.pos = start_pos
+        
+        # Handle the first line - it might have content after the marker
+        first_line = self.lines[self.pos]
+        stripped = first_line.strip()
+        
+        # Find which marker we're starting with
+        start_marker = None
+        for marker in ["DESCRIPTION:", "INCIDENT:"]:
+            if stripped.startswith(marker):
+                start_marker = marker
+                break
+        
+        if start_marker:
+            # Extract content after the marker on the first line
+            after_marker = stripped.split(start_marker)[1].strip()
+            if after_marker:
+                content_parts.append(after_marker)
+            self.pos += 1
+        else:
+            # If no marker found, just start from current position
+            self.pos += 1
+        
+        # Continue parsing until we hit an end marker
+        while self.pos < len(self.lines):
+            line = self.lines[self.pos]
+            stripped = line.strip()
+            
+            # Check if we've hit an end marker
+            if any(stripped.startswith(marker) for marker in end_markers):
+                break
+            
+            content_parts.append(line)
+            self.pos += 1
+        
+        return "\n".join(content_parts).strip()
     
     def _parse_start_node(self) -> Dict:
         """Parse START node."""

@@ -258,22 +258,97 @@ export class MobileRenderer extends Renderer {
         });
     }
 
+    async _fetchLeaderboard() {
+        try {
+            const response = await fetch('/api/v1/leaderboard');
+            if (!response.ok) {
+                throw new Error(`Failed to fetch leaderboard: ${response.status}`);
+            }
+            const data = await response.json();
+            return data.leaders || [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    _renderLeaderboardItem(rank, leader) {
+        return `
+            <div class="leaderboard-row">
+                <span class="leaderboard-rank">${rank}</span>
+                <span class="leaderboard-user">${this._escapeHtml(leader.user)}</span>
+                <span class="leaderboard-score">${leader.solved} solved</span>
+            </div>
+        `;
+    }
+
     _renderWelcome() {
         const container = document.getElementById('welcome');
         if (!container) return;
 
         container.innerHTML = `
             <div class="welcome-screen">
-                <div class="welcome-header">
-                    <p class="welcome-subtitle">Test your debugging skills</p>
-                </div>
-                <div class="welcome-content">
-                    <p class="welcome-desc">Handle realistic production incidents. Make the right calls.</p>
+                <div class="accordion">
+                    <div class="accordion-section">
+                        <button class="accordion-header" data-section="global-leaderboard">
+                            <span class="accordion-title">GLOBAL INCIDENT LEADERBOARD</span>
+                            <span class="accordion-icon">+</span>
+                        </button>
+                        <div class="accordion-content" id="global-leaderboard">
+                            <div class="leaderboard-loading">Loading...</div>
+                        </div>
+                    </div>
+                    <div class="accordion-section">
+                        <button class="accordion-header" data-section="incident-of-day">
+                            <span class="accordion-title">INCIDENT OF THE DAY</span>
+                            <span class="accordion-icon">+</span>
+                        </button>
+                        <div class="accordion-content" id="incident-of-day">
+                            <p class="accordion-placeholder">TBD</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
 
+        this._initAccordion();
+        this._loadLeaderboardData();
         this._renderScenarios();
+    }
+
+    _initAccordion() {
+        const container = document.getElementById('welcome');
+        if (!container) return;
+
+        const headers = container.querySelectorAll('.accordion-header');
+        headers.forEach(header => {
+            header.addEventListener('click', () => {
+                const section = header.dataset.section;
+                const content = container.querySelector(`#${section}`);
+                const icon = header.querySelector('.accordion-icon');
+                const isExpanded = content.classList.contains('expanded');
+
+                content.classList.toggle('expanded');
+                icon.textContent = isExpanded ? '+' : '−';
+            });
+        });
+    }
+
+    async _loadLeaderboardData() {
+        const leaderboardContainer = document.getElementById('global-leaderboard');
+        if (!leaderboardContainer) return;
+
+        const leaders = await this._fetchLeaderboard();
+
+        if (leaders.length === 0) {
+            leaderboardContainer.innerHTML = '<p class="accordion-placeholder">No solvers yet. Be the first!</p>';
+            return;
+        }
+
+        let html = '';
+        leaders.forEach((leader, index) => {
+            html += this._renderLeaderboardItem(index + 1, leader);
+        });
+        leaderboardContainer.innerHTML = html;
     }
 
     _renderExplaining() {
@@ -350,7 +425,7 @@ export class MobileRenderer extends Renderer {
         if (this._state.scenarioDescription) {
             const descDiv = document.createElement('div');
             descDiv.className = 'scenario-desc';
-            descDiv.textContent = this._state.scenarioDescription;
+            descDiv.innerHTML = this._state.scenarioDescription.replace(/\n/g, '<br>');
             container.appendChild(descDiv);
         }
 
@@ -416,9 +491,16 @@ export class MobileRenderer extends Renderer {
         const ratio = maxPoints > 0 ? score / maxPoints : 0;
         const scoreClass = ratio < 0.4 ? 'score-low' : 'score-high';
 
+        const nodeTitle = this._state.node ? (this._state.node.id || this._state.node.name || this._state.node.title || 'Incident') : 'Incident';
+        const nodeContent = this._state.node ? (this._state.node.content || this._state.node.description || 'No description available.') : 'No description available.';
+        
         let html = `
+            <div class="node-header">
+                <span class="node-label">NODE</span><span class="node-name">${this._escapeHtml(nodeTitle)}</span>
+            </div>
+            <div class="node-content">${this._escapeHtml(nodeContent)}</div>
             <div class="completion-header">
-                <h2 class="completion-title">INCIDENT RESULT</h2>
+                <h2 class="completion-title">RESULT</h2>
             </div>
             <div class="score-display ${scoreClass}">
                 <span class="score-value">${score}</span>
@@ -434,10 +516,14 @@ export class MobileRenderer extends Renderer {
         html += `<p class="feedback-text">${feedback}</p>`;
 
         if (path && path.length > 0) {
+            const pathHtml = path.map(p => this._escapeHtml(p)).join('<br><span class="path-arrow"> → </span>');
             html += `
                 <div class="path-section">
                     <h3 class="path-label">Your path:</h3>
-                    <p class="path-list">${path.map(p => this._escapeHtml(p)).join(' <span class="path-arrow">→</span> ')}</p>
+                    <p class="path-list">
+                        <span class="path-arrow"> → </span>
+                        ${pathHtml}
+                    </p>
                 </div>
             `;
         }

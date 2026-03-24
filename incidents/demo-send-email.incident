@@ -1,6 +1,12 @@
 INCIDENT: [demo hilarious] Send an Email (Production Critical)
 
-DESCRIPTION: You are the PM of the most important ecommerce project in your agency. It's Friday evening and you're drinking your second aperitif in complete relaxation. Your boss calls: "The intern broke production with a deploy. The website is down. I’m going to the beach. You handle it!" You must immediately notify the client via email. Good luck!
+DESCRIPTION:
+You are the PM of the most important ecommerce project in your agency.
+It's Friday evening and you're drinking your second aperitif in complete relaxation. 
+Your boss calls: 
+"The intern broke production with a deploy. The website is down. I’m going to the beach. You handle it!"
+You must immediately notify the client via email.
+Good luck!!!
 
 MAX_POINTS: 100
 

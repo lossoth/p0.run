@@ -1,4 +1,13 @@
 const API_BASE = "/api/v1";
+
+function isMobileDevice() {
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+    if (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)) {
+        return true;
+    }
+    return window.innerWidth < 768;
+}
+
 import { Renderer, DesktopRenderer } from './Renderer.js';
 import { MobileRenderer } from './MobileRenderer.js';
 
@@ -60,6 +69,9 @@ class GameClient {
         this.attempts = {};
         this.currentActionsHistory = [];
         this.availableScenarios = [];
+        this.skipBoot = false;
+        this._bootSkipHandler = null;
+        this._inBootPhase = false;
     }
 
     get terminal() {
@@ -273,12 +285,31 @@ class GameClient {
     }
 
     async showBootSequence() {
+        this._inBootPhase = true;
+
+        this._bootSkipHandler = (data) => {
+            if (data === '\r' || data === '\n') {
+                this.skipBoot = true;
+                this.renderer.setSkipBoot(true);
+            }
+        };
+
+        if (this.renderer.terminal && this.renderer.terminal.onData) {
+            this.renderer.terminal.onData(this._bootSkipHandler);
+        }
+
         await this.typeText('\x1b[36mInitializing incident environment...\x1b[0m', 20);
         await this.typeText('\x1b[36mLoading scenario engine...\x1b[0m', 20);
         await this.typeText('\x1b[36mConnecting to backend...\x1b[0m', 20);
         await this.typeText('\x1b[32mEnvironment ready.\x1b[0m', 30);
 
         this.renderer.writeln('');
+
+        if (this.renderer.terminal && this.renderer.terminal.offData) {
+            this.renderer.terminal.offData(this._bootSkipHandler);
+        }
+        this._bootSkipHandler = null;
+        this._inBootPhase = false;
 
         await this.loadScenarios();
     }
@@ -289,7 +320,8 @@ class GameClient {
         this.renderer.writeln('');
 
         this.availableScenarios.forEach((s, i) => {
-            this.renderer.writeln(`[${i + 1}] ${s.title}`);
+            this.renderer.writeln(`[${i + 1}] ${s.title} ${s.difficulty ? `(${s.difficulty})` : ''}`);
+            
             if (s.description) {
                 const firstSentence = s.description.split('.')[0];
                 const truncated = firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence + '...';
@@ -327,7 +359,6 @@ class GameClient {
     }
 
     async startScenario(scenarioTitle, scenarioDescription = null) {
-        console.log('[GameClient] startScenario called:', scenarioTitle);
         this.currentScenarioTitle = scenarioTitle;
         const isTerminal = !this.renderer.printNode;
 
@@ -361,7 +392,7 @@ class GameClient {
                 if (scenarioDesc) {
                     this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
                     this.renderer.writeln('\x1b[36mDescription:\x1b[0m');
-                    this.renderer.writeln(scenarioDesc);
+                    writeOutput(this.renderer, scenarioDesc);
                     this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
                 }
                 this.renderer.writeln('');
@@ -387,6 +418,10 @@ class GameClient {
 
     handleUserInput(data) {
         const charCode = data.charCodeAt(0);
+
+        if (this._inBootPhase) {
+            return;
+        }
 
         if (this.gameState === 'welcome') {
             if (charCode === 13) {
@@ -530,6 +565,7 @@ class GameClient {
             this.renderer.writeln('history         → show past attempts');
             this.renderer.writeln('replay          → replay last attempt - TBD');
             this.renderer.writeln('help            → show this help message');
+            this.renderer.writeln('Enter           → skip boot sequence when the page loads');
             this.renderer.writeln('');
             this.printPrompt();
             this.focusTerminal();
@@ -844,7 +880,13 @@ class GameClient {
         if (path && path.length > 0) {
             this.renderer.writeln('');
             this.renderer.writeln('\x1b[36m\x1b[1mYour path:\x1b[0m');
-            this.renderer.writeln(`\x1b[32m${path.join(' \x1b[36m→\x1b[32m ')}\x1b[0m`);
+            
+            const itemsPerLine = 3;
+            for (let i = 0; i < path.length; i += itemsPerLine) {
+                const chunk = path.slice(i, i + itemsPerLine);
+                const linePrefix = i > 0 ? '\x1b[36m→\x1b[32m ' : '\x1b[36m→\x1b[32m ';
+                this.renderer.writeln(`\x1b[32m${linePrefix}${chunk.join(' \x1b[36m→\x1b[32m ')}\x1b[0m`);
+            }
         }
 
         if (bestExplanation) {
@@ -885,10 +927,11 @@ class GameClient {
     }
 }
 
-export { GameClient };
+export { GameClient, isMobileDevice };
 
 document.addEventListener('DOMContentLoaded', () => {
-    const isMobile = window.innerWidth < 768;
+    const isMobile = isMobileDevice();
+    document.body.dataset.deviceType = isMobile ? 'mobile' : 'desktop'; // Used for CSS styling
 
     let renderer;
     if (isMobile) {

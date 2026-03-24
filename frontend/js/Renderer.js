@@ -47,9 +47,17 @@ export class Renderer {
     async typeText(text, speed = 15) {
         for (const char of text) {
             this.write(char);
-            await new Promise(r => setTimeout(r, speed));
+            if (this._skipBoot) {
+                await Promise.resolve();
+            } else {
+                await new Promise(r => setTimeout(r, speed));
+            }
         }
         this.writeln('');
+    }
+
+    setSkipBoot(value) {
+        this._skipBoot = value;
     }
 }
 
