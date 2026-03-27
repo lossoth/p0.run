@@ -98,6 +98,9 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "app": "Production Incident Game", "env": APP_ENV}
 
+# Print all registered routes for debugging purposes
+for route in app.routes:
+    print(f"Path: {route.path}, Name: {route.name}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -627,3 +627,13 @@ body[data-device-type="mobile"] #mobile-container {
 #connection-status.connected {
     color: #10b981;
 }
+
+#info a {
+    color: #58a6ff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+#info a:hover {
+    text-decoration: underline;
+}

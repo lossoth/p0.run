@@ -79,7 +79,7 @@ class GameClient {
     }
 
     printSeparator() {
-        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
     }
 
     printTerminalCommand(command) {
@@ -99,19 +99,19 @@ class GameClient {
 
     printHeader(title) {
         this.renderer.writeln('');
-        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m====================================================================\x1b[0m');
         this.renderer.writeln(`\x1b[36m\x1b[1m ${title}\x1b[0m`);
-        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m====================================================================\x1b[0m');
     }
 
     _renderNodeTerminal(node) {
         if (!node) return;
 
         this.renderer.writeln('');
-        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
         const nodeName = node.id || node.name || node.title || "scenario";
         this.renderer.writeln(`\x1b[36mNODE: ${nodeName}\x1b[0m`);
-        this.renderer.writeln('\x1b[38;5;245m----------------------------------\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
         this.renderer.writeln('');
 
         if (node.content) {
@@ -168,10 +168,10 @@ class GameClient {
 
     _renderWelcomeTerminal() {
         this.renderer.writeln('');
-        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m====================================================================\x1b[0m');
         this.renderer.writeln('\x1b[36m\x1b[1m     PRODUCTION INCIDENT GAME                \x1b[0m');
         this.renderer.writeln('\x1b[36m\x1b[1m     Test your debugging skills              \x1b[0m');
-        this.renderer.writeln('\x1b[36m\x1b[1m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1m====================================================================\x1b[0m');
         this.renderer.writeln('');
         this.renderer.writeln('\x1b[38;5;245mHandle realistic production incidents.');
         this.renderer.writeln('Make the right calls. Learn from the best.\x1b[0m');
@@ -242,6 +242,11 @@ class GameClient {
         } else {
             await this.showBootSequence();
         }
+
+        posthog.identify(getAnonymousId());
+        posthog.capture('game_loaded', {
+            device: isMobileDevice() ? 'mobile' : 'desktop'
+        });
     }
 
     async connect() {
@@ -353,6 +358,10 @@ class GameClient {
 
             this.gameState = 'selecting_scenario';
 
+            posthog.capture('scenario_list_viewed', {
+                count: this.availableScenarios.length
+            });
+
         } catch (e) {
             this.renderer.writeln('\x1b[31mERROR loading scenarios\x1b[0m');
         }
@@ -390,10 +399,10 @@ class GameClient {
             if (isTerminal) {
                 const scenarioDesc = scenario ? scenario.description : null;
                 if (scenarioDesc) {
-                    this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
+                    this.renderer.writeln('\x1b[38;5;245m────────────────────────────────────────────────────────────────────\x1b[0m');
                     this.renderer.writeln('\x1b[36mDescription:\x1b[0m');
                     writeOutput(this.renderer, scenarioDesc);
-                    this.renderer.writeln('\x1b[38;5;245m──────────────────────────────────\x1b[0m');
+                    this.renderer.writeln('\x1b[38;5;245m────────────────────────────────────────────────────────────────────\x1b[0m');
                 }
                 this.renderer.writeln('');
             }
@@ -409,6 +418,10 @@ class GameClient {
                 this.printPrompt();
                 this.focusTerminal();
             }
+
+            posthog.capture('scenario_started', {
+                scenario_id: scenarioTitle
+            });
 
         } catch (error) {
             this.renderer.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
@@ -554,9 +567,9 @@ class GameClient {
         
         if (input === 'help') {
             this.renderer.writeln('');
-            this.renderer.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
             this.renderer.writeln('\x1b[1;36mAVAILABLE COMMANDS\x1b[0m');
-            this.renderer.writeln('\x1b[1;36m----------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
             this.renderer.writeln('');
             this.renderer.writeln('start           → start a scenario - TBD');
             this.renderer.writeln('daily           → show today\'s incident');
@@ -565,7 +578,7 @@ class GameClient {
             this.renderer.writeln('history         → show past attempts');
             this.renderer.writeln('replay          → replay last attempt - TBD');
             this.renderer.writeln('help            → show this help message');
-            this.renderer.writeln('Enter           → skip boot sequence when the page loads');
+            this.renderer.writeln('[Enter]         → skip boot sequence when the page loads');
             this.renderer.writeln('');
             this.printPrompt();
             this.focusTerminal();
@@ -646,6 +659,12 @@ class GameClient {
             this.attempts[this.currentAttemptId] = [];
         }
         this.attempts[this.currentAttemptId].push({node: this.currentScenarioTitle, action: action.label});
+
+        posthog.capture('action_selected', {
+            scenario_id: this.currentScenarioTitle,
+            action_id: action.id,
+            step: this.attempts[this.currentAttemptId]?.length || 0
+        });
         
         await this.submitAction(action.id);
     }
@@ -722,9 +741,9 @@ class GameClient {
 
     async showDailyChallenge() {
         this.renderer.writeln('');
-        this.renderer.writeln('\x1b[1;36m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[1;36m====================================================================\x1b[0m');
         this.renderer.writeln('\x1b[1;36m         INCIDENT OF THE DAY                     \x1b[0m');
-        this.renderer.writeln('\x1b[1;36m==================================================\x1b[0m');
+        this.renderer.writeln('\x1b[1;36m====================================================================\x1b[0m');
         this.renderer.writeln('');
 
         try {
@@ -778,6 +797,8 @@ class GameClient {
                 this.printPrompt();
                 this.focusTerminal();
             }
+
+            posthog.capture('daily_started');
 
         } catch (error) {
             if (isTerminal) {
@@ -848,6 +869,12 @@ class GameClient {
     printCompletion(score, maxPoints, bestExplanation = null, path = null, message = null) {
         this.gameState = 'completed';
 
+        posthog.capture('scenario_completed', {
+            scenario_id: this.currentScenarioTitle,
+            score: score,
+            max_score: maxPoints
+        });
+
         if (this.renderer.printCompletion) {
             this.renderer.printCompletion(score, maxPoints, bestExplanation, path, message);
             this.completionScore = score;
@@ -891,9 +918,9 @@ class GameClient {
 
         if (bestExplanation) {
             this.renderer.writeln('');
-            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
             this.renderer.writeln('\x1b[36mTOP SOLUTION\x1b[0m');
-            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------\x1b[0m');
+            this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
             this.renderer.writeln('');
             this.renderer.writeln(bestExplanation);
             this.renderer.writeln('');
@@ -921,6 +948,10 @@ class GameClient {
                     body: JSON.stringify({ explanation: explanation })
                 }
             );
+
+            posthog.capture('explanation_submitted', {
+                length: explanation.length
+            });
         } catch (error) {
             // Silently fail - explanation is optional
         }
