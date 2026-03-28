@@ -18,7 +18,8 @@ export class MobileRenderer extends Renderer {
             onScenarioSelect: [],
             onActionSubmit: [],
             onExplanationSubmit: [],
-            onPlayAgain: []
+            onPlayAgain: [],
+            onCopyResult: []
         };
         // Render initial welcome view once DOM is ready
         if (document.readyState === 'loading') {
@@ -65,6 +66,10 @@ export class MobileRenderer extends Renderer {
         this._callbacks.onPlayAgain.push(callback);
     }
 
+    onCopyResult(callback) {
+        this._callbacks.onCopyResult.push(callback);
+    }
+
     _triggerScenarioSelect(scenarioId, description) {
         this._callbacks.onScenarioSelect.forEach(cb => cb(scenarioId, description));
     }
@@ -85,6 +90,10 @@ export class MobileRenderer extends Renderer {
         this._callbacks.onPlayAgain.forEach(cb => cb());
     }
 
+    _triggerCopyResult() {
+        this._callbacks.onCopyResult.forEach(cb => cb());
+    }
+
     printWelcome() {
         this.updateState({ view: 'welcome' });
         this._triggerWelcome();
@@ -102,7 +111,7 @@ export class MobileRenderer extends Renderer {
         this.updateState({ actions: actions || [] });
     }
 
-    printCompletion(score, maxPoints, bestExplanation = null, path = null, message = null) {
+    printCompletion(score, maxPoints, bestExplanation = null, path = null, message = null, shareMessage = null, feedback = null) {
         this.updateState({
             view: 'completion',
             completion: {
@@ -111,42 +120,10 @@ export class MobileRenderer extends Renderer {
                 bestExplanation,
                 path,
                 message,
-                feedback: this._getFeedbackMessage(maxPoints > 0 ? score / maxPoints : 0)
+                feedback: feedback,
+                shareMessage
             }
         });
-    }
-
-    _getFeedbackMessage(ratio) {
-        const highScoreMessages = [
-            "You handled this like a production engineer.",
-            "Calm, precise, no wasted moves.",
-            "Clean execution. No panic."
-        ];
-        const midScoreMessages = [
-            "Not bad, but you missed important signals.",
-            "You got there, but it was messy.",
-            "Decent recovery, but not optimal."
-        ];
-        const lowScoreMessages = [
-            "You're guessing. Slow down and investigate.",
-            "You're guessing. Production is not a casino.",
-            "You're reacting, not debugging."
-        ];
-        const veryLowScoreMessages = [
-            "Please step away from the keyboard!",
-            "You made things worse!",
-            "Production survived. Barely!"
-        ];
-
-        if (ratio >= 0.85) {
-            return highScoreMessages[Math.floor(Math.random() * highScoreMessages.length)];
-        } else if (ratio >= 0.60) {
-            return midScoreMessages[Math.floor(Math.random() * midScoreMessages.length)];
-        } else if (ratio >= 0.40) {
-            return lowScoreMessages[Math.floor(Math.random() * lowScoreMessages.length)];
-        } else {
-            return veryLowScoreMessages[Math.floor(Math.random() * veryLowScoreMessages.length)];
-        }
     }
 
     renderScenarios(scenarios) {
@@ -487,7 +464,7 @@ export class MobileRenderer extends Renderer {
         const container = document.getElementById('completion');
         if (!container || !this._state.completion) return;
 
-        const { score, maxPoints, bestExplanation, path, message, feedback } = this._state.completion;
+        const { score, maxPoints, bestExplanation, path, message, feedback, shareMessage } = this._state.completion;
         const ratio = maxPoints > 0 ? score / maxPoints : 0;
         const scoreClass = ratio < 0.4 ? 'score-low' : 'score-high';
 
@@ -537,7 +514,17 @@ export class MobileRenderer extends Renderer {
             `;
         }
 
+        if (shareMessage) {
+            html += `
+                <div class="share-preview">
+                    <div class="share-preview-header">Share Preview</div>
+                    <pre class="share-preview-content">${this._escapeHtml(shareMessage)}</pre>
+                </div>
+            `;
+        }
+
         html += `
+            <button id="share-result" class="share-btn">Share your result</button>
             <div class="explain-section">
                 <h3 class="explain-label">Explain briefly what caused the incident and why your solution worked.</h3>
                 <p class="explain-hint">Maximum 500 characters, no links allowed.</p>
@@ -551,6 +538,18 @@ export class MobileRenderer extends Renderer {
         `;
 
         container.innerHTML = html;
+
+        const shareBtn = document.getElementById('share-result');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', async () => {
+                if (shareMessage) {
+                    const success = await navigator.clipboard.writeText(shareMessage);
+                    shareBtn.textContent = 'Copied!';
+                    shareBtn.disabled = true;
+                    this._triggerCopyResult();
+                }
+            });
+        }
 
         const textarea = document.getElementById('explanation-input');
         const charCount = document.getElementById('char-count');

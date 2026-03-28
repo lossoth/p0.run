@@ -1,4 +1,5 @@
 const API_BASE = "/api/v1";
+const BASE_URL = "https://p0-jko3.onrender.com";
 
 function isMobileDevice() {
     const ua = navigator.userAgent || navigator.vendor || window.opera;
@@ -72,6 +73,7 @@ class GameClient {
         this.skipBoot = false;
         this._bootSkipHandler = null;
         this._inBootPhase = false;
+        this.feedbackMessage = null;
     }
 
     get terminal() {
@@ -185,6 +187,10 @@ class GameClient {
     }
 
     getFeedbackMessage(ratio) {
+        if (this.feedbackMessage) {
+            return this.feedbackMessage;
+        }
+
         const highScoreMessages = [
             "You handled this like a production engineer.",
             "Calm, precise, no wasted moves.",
@@ -209,14 +215,64 @@ class GameClient {
             "Production survived. Barely!"
         ];
 
+        let messages;
         if (ratio >= 0.85) {
-            return highScoreMessages[Math.floor(Math.random() * highScoreMessages.length)];
+            messages = highScoreMessages;
         } else if (ratio >= 0.60) {
-            return midScoreMessages[Math.floor(Math.random() * midScoreMessages.length)];
+            messages = midScoreMessages;
         } else if (ratio >= 0.40) {
-            return lowScoreMessages[Math.floor(Math.random() * lowScoreMessages.length)];
+            messages = lowScoreMessages;
         } else {
-            return veryLowScoreMessages[Math.floor(Math.random() * veryLowScoreMessages.length)];
+            messages = veryLowScoreMessages;
+        }
+
+        this.feedbackMessage = messages[Math.floor(Math.random() * messages.length)];
+        return this.feedbackMessage;
+    }
+
+    buildShareMessage(score, maxPoints) {
+        const ratio = maxPoints > 0 ? score / maxPoints : 0;
+        const scenarioTitle = this.currentScenarioTitle || "Incident";
+        const stepCount = this.attempts[this.currentAttemptId]?.length || 0;
+        const feedback = this.getFeedbackMessage(ratio);
+
+        const stepsText = stepCount <= 4 
+            ? `Steps: ${stepCount} (perfect run?)` 
+            : `Steps: ${stepCount}`;
+
+        return `PRODUCTION INCIDENT GAME
+
+🎯 ${scenarioTitle}
+Score: ${score}/${maxPoints}
+${stepsText}
+
+"${feedback}"
+
+Think you can do better?
+${BASE_URL}`;
+    }
+
+    async copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (e) {
+            }
+        }
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return true;
+        } catch (e) {
+            document.body.removeChild(textarea);
+            return false;
         }
     }
 
@@ -368,6 +424,7 @@ class GameClient {
     }
 
     async startScenario(scenarioTitle, scenarioDescription = null) {
+        this.feedbackMessage = null;
         this.currentScenarioTitle = scenarioTitle;
         const isTerminal = !this.renderer.printNode;
 
@@ -522,6 +579,41 @@ class GameClient {
 
             this.inputBuffer += data;
             this.renderer.write(data);
+
+            return;
+        }
+
+        // -----------------------------
+        // SHARE CHOICE MODE
+        // -----------------------------
+        if (this.gameState === 'share_choice') {
+            if (charCode === 13) {
+                const choice = (this.inputBuffer || '').trim().toLowerCase();
+                this.renderer.writeln('');
+                this.inputBuffer = '';
+                
+                if (choice === 'y' || choice === 'n' || choice === '') {
+                    this.submitShareChoice(choice);
+                } else {
+                    this.renderer.writeln('\x1b[31mInvalid choice. Please enter y or n.\x1b[0m');
+                    this.renderer.writeln('');
+                    this.renderer.write('\x1b[32mCopy incident result to clipboard? [y/n] > \x1b[0m');
+                }
+                return;
+            }
+
+            if (charCode === 127) {
+                if (this.inputBuffer.length > 0) {
+                    this.inputBuffer = this.inputBuffer.slice(0, -1);
+                    this.renderer.write('\b \b');
+                }
+                return;
+            }
+
+            if (charCode === 121 || charCode === 110 || charCode === 89 || charCode === 78) {
+                this.inputBuffer += data;
+                this.renderer.write(data);
+            }
 
             return;
         }
@@ -830,6 +922,14 @@ class GameClient {
         }
 
         try {
+            const action = this.currentActions.find(a => a.id === actionId);
+            if (action) {
+                if (!this.attempts[this.currentAttemptId]) {
+                    this.attempts[this.currentAttemptId] = [];
+                }
+                this.attempts[this.currentAttemptId].push({node: this.currentScenarioTitle, action: action.label || 'Action'});
+            }
+
             const response = await fetch(
                 `${API_BASE}/scenarios/${this.currentScenarioTitle}/attempt/${this.currentAttemptId}/action/${actionId}`,
                 { method: 'POST' }
@@ -876,7 +976,10 @@ class GameClient {
         });
 
         if (this.renderer.printCompletion) {
-            this.renderer.printCompletion(score, maxPoints, bestExplanation, path, message);
+            const shareMessage = this.buildShareMessage(score, maxPoints);
+            const ratio = maxPoints > 0 ? score / maxPoints : 0;
+            const feedback = this.getFeedbackMessage(ratio);
+            this.renderer.printCompletion(score, maxPoints, bestExplanation, path, message, shareMessage, feedback);
             this.completionScore = score;
             this.bestExplanation = bestExplanation;
             return;
@@ -885,7 +988,7 @@ class GameClient {
         const ratio = maxPoints > 0 ? score / maxPoints : 0;
         const feedback = this.getFeedbackMessage(ratio) || "Scenario complete.";
 
-        this.printHeader('INCIDENT RESULT');
+        this.printHeader(`INCIDENT RESULT: ${this.currentScenarioTitle || 'Incident'}`);
         
         this.renderer.writeln('');
         if (ratio < 0.40) {
@@ -927,15 +1030,49 @@ class GameClient {
         }
 
         this.renderer.writeln('');
-        this.renderer.writeln('\x1b[36m\x1b[1mExplain briefly what caused the incident and why your solution worked.\x1b[0m');
-        this.renderer.writeln('\x1b[38;5;245mMaximum 500 characters, no links allowed.\x1b[0m');
-        this.renderer.writeln('');
-        this.renderer.write('\x1b[32mexplain > \x1b[0m');
+        this.renderer.writeln('\x1b[36m\x1b[1mWant to share your result?\x1b[0m');
+        this.renderer.write('\x1b[32mCopy incident result to clipboard? [y/n] > \x1b[0m');
 
-        this.gameState = 'explaining';
+        this.gameState = 'share_choice';
         this.inputBuffer = '';
         this.completionScore = score;
         this.bestExplanation = bestExplanation;
+    }
+
+    async submitShareChoice(choice) {
+        if (choice.toLowerCase() === 'y') {
+            const message = this.buildShareMessage(this.completionScore, this.currentMaxPoints);
+            const success = await this.copyToClipboard(message);
+            
+            if (success) {
+                this.renderer.writeln('\x1b[32m✓ Copied to clipboard!\x1b[0m');
+                
+                message.split('\n').forEach(line => {
+                    this.renderer.writeln(`\x1b[38;5;245m${line}\x1b[0m`);
+                });
+                this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
+            } else {
+                this.renderer.writeln('\x1b[31mFailed to copy to clipboard\x1b[0m');
+            }
+            
+            if (typeof posthog !== 'undefined' && posthog.capture) {
+                const ratio = this.currentMaxPoints > 0 ? this.completionScore / this.currentMaxPoints : 0;
+                posthog.capture('share_result', {
+                    scenario_id: this.currentScenarioTitle,
+                    score: this.completionScore,
+                    max_points: this.currentMaxPoints,
+                    steps: this.attempts[this.currentAttemptId]?.length || 0
+                });
+            }
+        }
+        
+        this.renderer.writeln('');
+        this.renderer.writeln('\x1b[36m\x1b[1mExplain briefly what caused the incident and why your solution worked.\x1b[0m');
+        this.renderer.writeln('\x1b[38;5;245mMaximum 500 characters, no links allowed.\x1b[0m');
+        this.renderer.write('\x1b[32mExplain > \x1b[0m');
+        
+        this.gameState = 'explaining';
+        this.inputBuffer = '';
     }
 
     async submitExplanation(explanation) {
@@ -979,6 +1116,24 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.onActionSubmit((actionId) => client.submitAction(actionId));
         renderer.onExplanationSubmit((exp) => client.submitExplanation(exp));
         renderer.onPlayAgain(() => window.location.reload());
+        renderer.onCopyResult(async () => {
+            if (!client.completionScore) return;
+            const message = client.buildShareMessage(client.completionScore, client.currentMaxPoints);
+            const success = await client.copyToClipboard(message);
+            const shareBtn = document.getElementById('share-result');
+            if (shareBtn) {
+                shareBtn.textContent = success ? 'Copied!' : 'Copy Failed';
+                shareBtn.disabled = true;
+            }
+            if (typeof posthog !== 'undefined' && posthog.capture) {
+                posthog.capture('share_result', {
+                    scenario_id: client.currentScenarioTitle,
+                    score: client.completionScore,
+                    max_points: client.currentMaxPoints,
+                    steps: client.attempts[client.currentAttemptId]?.length || 0
+                });
+            }
+        });
     }
 
     client.init();

@@ -66,9 +66,11 @@ export class DesktopRenderer extends Renderer {
         super();
         this.terminal = new Terminal({
             cursorBlink: true,
-            fontSize: 15,
+            fontSize: 13,
             fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
-            fontWeight: 'normal',
+            fontWeight: 'normal',      // Standard text weight
+            fontWeightBold: 'normal',  // Force bold text to use normal weight
+            drawBoldTextInBrightColors: false,
             lineHeight: 1.35,
             theme: {
                 background: '#0d1117',
