@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config.database import SessionLocal, init_db
 from app.models import User, Scenario, Node, Action, Edge, Attempt, AttemptAction
@@ -21,6 +22,13 @@ APP_ENV = os.getenv("APP_ENV", "dev")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class HTTPSRedirectFixMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.headers.get("x-forwarded-proto") == "https":
+            request.scope["scheme"] = "https"
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -69,6 +77,8 @@ app = FastAPI(
     openapi_url="/openapi.json" if APP_ENV != "prod" else None,
     lifespan=lifespan,
 )
+
+app.add_middleware(HTTPSRedirectFixMiddleware)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 

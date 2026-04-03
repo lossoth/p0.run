@@ -1,5 +1,5 @@
 const API_BASE = "/api/v1";
-const BASE_URL = "https://p0-jko3.onrender.com";
+const BASE_URL = "https://p0-run.up.railway.app";
 
 function isMobileDevice() {
     const ua = navigator.userAgent || navigator.vendor || window.opera;
@@ -33,15 +33,6 @@ function getAnonymousId() {
     return id;
 }
 
-const commandMap = {
-    "df": "check_disk",
-    "df -h": "check_disk",
-    "docker system df": "docker_usage",
-    "docker ps": "list_containers",
-    "logs": "inspect_logs",
-    "journalctl": "inspect_logs"
-};
-
 function hasAnsi(text) {
     return /\x1b\[[0-9;]*m/.test(text);
 }
@@ -67,6 +58,8 @@ class GameClient {
         this.currentMaxPoints = 100;
         this.inputBuffer = '';
         this.gameState = 'welcome';
+        this.previousGameState = null; // For help state restoration
+        this.lastCommandExecuted = null; // Track last executed command for "return to game" flow
         this.attempts = {};
         this.currentActionsHistory = [];
         this.availableScenarios = [];
@@ -184,6 +177,47 @@ class GameClient {
     showWelcome() {
         this.gameState = 'welcome';
         this.printWelcome();
+    }
+
+    _showHelp() {
+        this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
+        this.renderer.writeln('\x1b[1;36mAVAILABLE COMMANDS\x1b[0m');
+        this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
+        this.renderer.writeln('');
+        this.renderer.writeln('start           → start a scenario - TBD');
+        this.renderer.writeln('daily           → show today\'s incident');
+        this.renderer.writeln('start-daily     → start daily challenge');
+        this.renderer.writeln('leaderboard     → show ranking');
+        this.renderer.writeln('history         → show past attempts');
+        this.renderer.writeln('replay          → replay last attempt - TBD');
+        this.renderer.writeln('help            → show this help message');
+        this.renderer.writeln('exit            → close this help');
+        this.renderer.writeln('[Enter]         → skip boot sequence when the page loads');
+        this.renderer.writeln('');
+        this.renderer.write('\x1b[32mSelect command > \x1b[0m');
+    }
+
+    _enterHelpMode() {
+        this.previousGameState = this.gameState;
+        this.gameState = 'help';
+    }
+
+    _exitHelpMode() {
+        if (this.previousGameState) {
+            this.gameState = this.previousGameState;
+            this.previousGameState = null;
+        } else {
+            this.gameState = 'selecting_scenario';
+        }
+        
+        if (this.gameState === 'selecting_scenario') {
+            this._renderScenariosTerminal();
+        } else if (this.gameState === 'playing') {
+            this.printActions(this.currentActions);
+        }
+        
+        this.printPrompt();
+        this.focusTerminal();
     }
 
     getFeedbackMessage(ratio) {
@@ -502,8 +536,81 @@ ${BASE_URL}`;
             }
         }
 
-        if (this.gameState === 'selecting_scenario') {
+        // Help mode - handle commands
+        if (this.gameState === 'help') {
             if (charCode === 13) {
+                const input = this.inputBuffer.trim().toLowerCase();
+                this.renderer.writeln('');
+                
+                if (input === 'exit' || input === '') {
+                    this._exitHelpMode();
+                    this.inputBuffer = '';
+                    return;
+                }
+                
+                // Check if it's a valid command before exiting help
+                const validCommands = ['help', 'daily', 'start-daily', 'leaderboard', 'history', 'replay'];
+                const isValidCommand = validCommands.some(cmd => {
+                    if (cmd === 'replay') {
+                        return input.startsWith('replay ');
+                    }
+                    return input === cmd;
+                });
+                
+                if (!isValidCommand) {
+                    this.renderer.writeln('\x1b[38;5;245mUnknown help command\x1b[0m');
+                    this.printPrompt();
+                    this.focusTerminal();
+                    this.inputBuffer = '';
+                    return;
+                }
+                
+                // Exit help mode and process the command using existing processInput logic
+                this._exitHelpMode();
+                this.inputBuffer = input;
+                this.processInput();
+                return;
+            }
+
+            // Backspace in help
+            if (charCode === 127) {
+                if (this.inputBuffer.length > 0) {
+                    this.inputBuffer = this.inputBuffer.slice(0, -1);
+                    this.renderer.write('\b \b');
+                }
+                return;
+            }
+
+            // Allow typing in help mode
+            if ((charCode >= 97 && charCode <= 122) || charCode === 45 || charCode === 95) {
+                this.inputBuffer += data;
+                this.renderer.write(data);
+            }
+            return;
+        }
+
+        if (this.gameState === 'selecting_scenario') {
+            // Handle global commands in scenario selection (help, daily, leaderboard, etc.)
+            const input = this.inputBuffer.trim().toLowerCase();
+            const validCommands = ['help', 'daily', 'leaderboard', 'history', 'start-daily'];
+            if (charCode === 13 && (validCommands.includes(input) || input.startsWith('replay '))) {
+                this.renderer.writeln('');
+                const cmd = this.inputBuffer;
+                this.inputBuffer = '';
+                this.processInput(cmd);
+                return;
+            }
+
+            if (charCode === 13) {
+                // If user just executed an info command (history, leaderboard, daily), 
+                // pressing Enter should return to the game without error
+                if (this.lastCommandExecuted) {
+                    this.lastCommandExecuted = null;
+                    this.inputBuffer = '';
+                    this._renderScenariosTerminal();
+                    return;
+                }
+
                 this.renderer.writeln('');
 
                 const choice = parseInt(this.inputBuffer);
@@ -511,9 +618,7 @@ ${BASE_URL}`;
                 if (!choice || choice < 1 || choice > this.availableScenarios.length) {
                     this.renderer.writeln('\x1b[31mInvalid choice, please try again.\x1b[0m');
                     this._renderScenariosTerminal();
-                    if (this.inputBuffer) {
-                        this.renderer.write(this.inputBuffer);
-                    }
+                    this.inputBuffer = '';
                     return;
                 }
 
@@ -527,12 +632,15 @@ ${BASE_URL}`;
             }
 
             if (charCode === 127) {
-                this.inputBuffer = this.inputBuffer.slice(0, -1);
-                this.renderer.write('\b \b');
+                if (this.inputBuffer.length > 0) {
+                    this.inputBuffer = this.inputBuffer.slice(0, -1);
+                    this.renderer.write('\b \b');
+                }
                 return;
             }
 
-            if (charCode >= 48 && charCode <= 57) {
+            // Allow letters, numbers, and dash for commands like 'start-daily'
+            if ((charCode >= 48 && charCode <= 57) || (charCode >= 97 && charCode <= 122) || charCode === 45) {
                 this.inputBuffer += data;
                 this.renderer.write(data);
             }
@@ -654,31 +762,19 @@ ${BASE_URL}`;
         }
     }
 
-    async processInput() {
-        const input = this.inputBuffer.trim();
+    async processInput(cmd = null) {
+        const input = cmd !== null ? cmd : this.inputBuffer.trim();
         
         if (input === 'help') {
-            this.renderer.writeln('');
-            this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
-            this.renderer.writeln('\x1b[1;36mAVAILABLE COMMANDS\x1b[0m');
-            this.renderer.writeln('\x1b[1;36m--------------------------------------------------------------------\x1b[0m');
-            this.renderer.writeln('');
-            this.renderer.writeln('start           → start a scenario - TBD');
-            this.renderer.writeln('daily           → show today\'s incident');
-            this.renderer.writeln('start-daily     → start daily challenge');
-            this.renderer.writeln('leaderboard     → show ranking');
-            this.renderer.writeln('history         → show past attempts');
-            this.renderer.writeln('replay          → replay last attempt - TBD');
-            this.renderer.writeln('help            → show this help message');
-            this.renderer.writeln('[Enter]         → skip boot sequence when the page loads');
-            this.renderer.writeln('');
-            this.printPrompt();
-            this.focusTerminal();
+            this._showHelp();
+            this._enterHelpMode();
+            this.inputBuffer = '';
             return;
         }
-
         if (input === 'history') {
             this.showHistory();
+            this.lastCommandExecuted = 'history';
+            this.renderer.writeln('\x1b[38;5;245mPress [Enter] to resume the game\x1b[0m');
             this.printPrompt();
             this.focusTerminal();
             return;
@@ -686,6 +782,8 @@ ${BASE_URL}`;
 
         if (input === 'leaderboard') {
             this.showLeaderboard();
+            this.lastCommandExecuted = 'leaderboard';
+            this.renderer.writeln('\x1b[38;5;245mPress [Enter] to resume the game\x1b[0m');
             this.printPrompt();
             this.focusTerminal();
             return;
@@ -693,12 +791,21 @@ ${BASE_URL}`;
         
         if (input === 'daily') {
             await this.showDailyChallenge();
+            this.lastCommandExecuted = 'daily';
+            this.renderer.writeln('\x1b[38;5;245mPress [Enter] to resume the game\x1b[0m');
             this.printPrompt();
             this.focusTerminal();
             return;
         }
         
         if (input === 'start-daily') {
+            if (this.gameState === 'playing') {
+                this.renderer.writeln('\x1b[38;5;245mFinish the current scenario before starting the daily challenge\x1b[0m');
+                this.renderer.writeln('\x1b[38;5;245mPress [Enter] to resume the game\x1b[0m');
+                this.printPrompt();
+                this.focusTerminal();
+                return;
+            }
             await this.startDailyChallenge();
             return;
         }
@@ -709,30 +816,11 @@ ${BASE_URL}`;
             return;
         }
 
-        const inputLower = input.toLowerCase();
-
-        if (commandMap[inputLower]) {
-            const mappedActionKey = commandMap[inputLower];
-            const matchedAction = this.currentActions.find(
-                action => (action.name && action.name.toLowerCase() === mappedActionKey) ||
-                          (action.key && action.key.toLowerCase() === mappedActionKey) ||
-                          (action.label && action.label.toLowerCase().replace(/\s+/g, '_') === mappedActionKey)
-            );
-
-            if (matchedAction) {
-                if (!this.attempts[this.currentAttemptId]) {
-                    this.attempts[this.currentAttemptId] = [];
-                }
-                this.attempts[this.currentAttemptId].push({node: this.currentScenarioTitle, action: matchedAction.label});
-                await this.submitAction(matchedAction.id);
-                return;
-            } else {
-                this.renderer.writeln('\x1b[31mInvalid input. Please enter a number.\x1b[0m');
-                this.printActions(this.currentActions);
-                this.printPrompt();
-                this.focusTerminal();
-                return;
-            }
+        // -----------------------------
+        // NORMAL GAME MODE
+        // -----------------------------
+        if (this.gameState !== 'playing') {
+            return;
         }
 
         const choice = parseInt(input, 10);
@@ -740,6 +828,8 @@ ${BASE_URL}`;
         if (isNaN(choice) || choice < 1 || choice > this.currentActions.length) {
             this.renderer.writeln('\x1b[31mInvalid choice. Select a valid option.\x1b[0m');
             this.printActions(this.currentActions);
+            this.renderer.writeln('');
+            this.inputBuffer = '';
             this.printPrompt();
             this.focusTerminal();
             return;
@@ -849,7 +939,7 @@ ${BASE_URL}`;
             this.renderer.writeln(`\x1b[1;37mScenario:\x1b[0m ${data.scenario}`);
             this.renderer.writeln(`\x1b[1;37mDifficulty:\x1b[0m ${data.difficulty}`);
             this.renderer.writeln('');
-            this.renderer.writeln('\x1b[38;5;245mType "start daily" to begin.\x1b[0m');
+            this.renderer.writeln('\x1b[38;5;245mType "start-daily" to begin.\x1b[0m');
         } catch (error) {
             this.renderer.writeln('\x1b[31mERROR: Unable to fetch daily challenge\x1b[0m');
         }
