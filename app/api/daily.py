@@ -12,6 +12,23 @@ from app.models import Scenario
 router = APIRouter(prefix="/api/v1/daily", tags=["daily"])
 
 
+def _get_daily_scenario_and_date(db: Session) -> tuple[Scenario, str]:
+    today = date.today()
+    date_str = today.isoformat()
+    
+    scenarios = db.query(Scenario).filter(Scenario.is_active == True).all()
+    
+    if not scenarios:
+        raise HTTPException(status_code=404, detail="No active scenarios available")
+    
+    hash_input = f"{date_str}"
+    hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
+    index = hash_value % len(scenarios)
+    
+    selected = scenarios[index]
+    return selected, date_str
+
+
 class DailyChallengeResponse(BaseModel):
     date: str
     scenario: str
@@ -25,19 +42,7 @@ class StartDailyRequest(BaseModel):
 @router.get("", response_model=DailyChallengeResponse)
 def get_daily_challenge(db: Session = Depends(get_db)):
     """Get today's daily incident challenge."""
-    today = date.today()
-    date_str = today.isoformat()
-    
-    scenarios = db.query(Scenario).filter(Scenario.is_active == True).all()
-    
-    if not scenarios:
-        raise HTTPException(status_code=404, detail="No active scenarios available")
-    
-    hash_input = f"{date_str}"
-    hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
-    index = hash_value % len(scenarios)
-    
-    selected = scenarios[index]
+    selected, date_str = _get_daily_scenario_and_date(db)
     
     return DailyChallengeResponse(
         date=date_str,
@@ -49,25 +54,14 @@ def get_daily_challenge(db: Session = Depends(get_db)):
 @router.post("/start")
 def start_daily_challenge(request: StartDailyRequest, db: Session = Depends(get_db)):
     """Start today's daily incident challenge."""
-    today = date.today()
-    date_str = today.isoformat()
-    
-    scenarios = db.query(Scenario).filter(Scenario.is_active == True).all()
-    
-    if not scenarios:
-        raise HTTPException(status_code=404, detail="No active scenarios available")
-    
-    hash_input = f"{date_str}"
-    hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
-    index = hash_value % len(scenarios)
-    
-    selected = scenarios[index]
+    selected, _ = _get_daily_scenario_and_date(db)
     
     user = get_or_create_user(db, request.anonymous_id)
     
     engine = ScenarioEngine(db)
     try:
         result = engine.start_attempt(user.id, selected.id)
+        result["scenario"] = selected.slug
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

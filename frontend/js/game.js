@@ -106,7 +106,6 @@ class GameClient {
         this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
         const nodeName = node.id || node.name || node.title || "scenario";
         this.renderer.writeln(`\x1b[36mNODE: ${nodeName}\x1b[0m`);
-        this.renderer.writeln('\x1b[38;5;245m--------------------------------------------------------------------\x1b[0m');
         this.renderer.writeln('');
 
         if (node.content) {
@@ -123,7 +122,6 @@ class GameClient {
             return;
         }
 
-        this.renderer.writeln('');
         this.renderer.writeln('\x1b[36mAVAILABLE ACTIONS\x1b[0m');
         this.renderer.writeln('');
 
@@ -320,8 +318,6 @@ ${BASE_URL}`;
     }
 
     async init() {
-        getAnonymousId();
-
         this.renderer.onInput((data) => this.handleUserInput(data));
 
         await this.connect();
@@ -458,44 +454,77 @@ ${BASE_URL}`;
     }
 
     async startScenario(scenarioTitle, scenarioDescription = null) {
+        await this._startGame(`scenarios/${scenarioTitle}/start`, scenarioTitle, scenarioDescription);
+        posthog.capture('scenario_started', { scenario_id: scenarioTitle });
+    }
+
+    async startDailyChallenge() {
+        try {
+            const response = await fetch(`${API_BASE}/daily`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to get daily: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const scenarioTitle = data.scenario;
+            const scenario = this.availableScenarios.find(s => s.id === scenarioTitle || s.title === scenarioTitle || s.slug === scenarioTitle);
+            const scenarioDescription = scenario?.description || null;
+            
+            await this._startGame('daily/start', scenarioTitle, scenarioDescription);
+            posthog.capture('daily_started');
+        } catch (error) {
+            const isTerminal = !this.renderer.printNode;
+            this._handleStartError(isTerminal);
+        }
+    }
+
+    async _startGame(apiEndpoint, scenarioTitle = null, scenarioDescription = null) {
         this.feedbackMessage = null;
         this.currentScenarioTitle = scenarioTitle;
         const isTerminal = !this.renderer.printNode;
 
         if (isTerminal) {
-            this.renderer.writeln(`\x1b[36m▶ Starting scenario:\x1b[0m ${scenarioTitle}`);
+            this.renderer.writeln('');
+            this.renderer.writeln(`\x1b[36mScenario:\x1b[0m ${scenarioTitle}`);
             this.renderer.writeln('');
         }
 
-        const scenario = this.availableScenarios.find(s => (s.id || s.title) === scenarioTitle);
+        const scenario = scenarioTitle ? this.availableScenarios.find(s => (s.id || s.title || s.slug) === scenarioTitle) : null;
 
         try {
-            const response = await fetch(`${API_BASE}/scenarios/${scenarioTitle}/start`, {
+            const response = await fetch(`${API_BASE}/${apiEndpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ anonymous_id: anonymousId })
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to start scenario: ${response.status}`);
+                throw new Error(`Failed to start: ${response.status}`);
             }
 
             const data = await response.json();
+            
+            // For daily, scenarioTitle comes from response
+            if (!scenarioTitle && data.scenario) {
+                scenarioTitle = data.scenario;
+                this.currentScenarioTitle = scenarioTitle;
+                scenario = this.availableScenarios.find(s => s.id === data.scenario || s.title === data.scenario);
+            }
+
             this.currentAttemptId = data.attempt_id;
             this.currentMaxPoints = data.max_points || 100;
             this.attempts[this.currentAttemptId] = [];
             this.gameState = 'playing';
             this.updateAttemptDisplay();
 
-            if (isTerminal) {
-                const scenarioDesc = scenario ? scenario.description : null;
-                if (scenarioDesc) {
-                    this.renderer.writeln('\x1b[38;5;245m────────────────────────────────────────────────────────────────────\x1b[0m');
-                    this.renderer.writeln('\x1b[36mDescription:\x1b[0m');
-                    writeOutput(this.renderer, scenarioDesc);
-                    this.renderer.writeln('\x1b[38;5;245m────────────────────────────────────────────────────────────────────\x1b[0m');
-                }
-                this.renderer.writeln('');
+            if (isTerminal && scenario && scenario.description) {
+                this.renderer.writeln('\x1b[38;5;245m────────────────────────────────────────────────────────────────────\x1b[0m');
+                this.renderer.writeln('\x1b[36mDescription:\x1b[0m');
+                writeOutput(this.renderer, scenario.description);
             }
 
             if (this.renderer.printNode && scenarioDescription) {
@@ -510,13 +539,17 @@ ${BASE_URL}`;
                 this.focusTerminal();
             }
 
-            posthog.capture('scenario_started', {
-                scenario_id: scenarioTitle
-            });
-
         } catch (error) {
-            this.renderer.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
-            this.renderer.writeln('');
+            this._handleStartError(isTerminal);
+        }
+    }
+
+    _handleStartError(isTerminal) {
+        this.renderer.writeln('\x1b[31mERROR: Unable to reach incident engine\x1b[0m');
+        this.renderer.writeln('');
+        if (isTerminal) {
+            this.printPrompt();
+            this.focusTerminal();
         }
     }
 
@@ -914,7 +947,10 @@ ${BASE_URL}`;
 
             data.leaders.forEach((leader, index) => {
                 const rank = index + 1;
-                this.renderer.writeln(`${rank}. ${leader.user.padEnd(12)} ${leader.solved} solved`);
+                const isCurrentUser = leader.user === `anon_${anonymousId.substring(0, 8)}`;
+                const displayRank = isCurrentUser ? '->' : `${rank}.`;
+                const displayUser = isCurrentUser ? `\x1b[1m${leader.user}\x1b[0m` : leader.user;
+                this.renderer.writeln(`${displayRank} ${displayUser.padEnd(12)} ${leader.solved} solved`);
             });
         } catch (error) {
             this.renderer.writeln('\x1b[31mERROR: Unable to fetch leaderboard\x1b[0m');
@@ -945,53 +981,6 @@ ${BASE_URL}`;
         }
     }
 
-    async startDailyChallenge() {
-        const isTerminal = !this.renderer.printNode;
-
-        if (isTerminal) {
-            this.renderer.writeln('');
-            this.renderer.writeln('\x1b[38;5;245mStarting daily challenge...\x1b[0m');
-        }
-
-        try {
-            const response = await fetch(`${API_BASE}/daily/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ anonymous_id: anonymousId })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to start daily: ${response.status}`);
-            }
-
-            const data = await response.json();
-            this.currentAttemptId = data.attempt_id;
-            this.currentScenarioTitle = data.scenario;
-            this.currentMaxPoints = data.max_points || 100;
-            this.attempts[this.currentAttemptId] = [];
-            this.gameState = 'playing';
-            this.updateAttemptDisplay();
-
-            this.printNode(data.node);
-            this.printActions(data.actions);
-
-            if (isTerminal) {
-                this.printPrompt();
-                this.focusTerminal();
-            }
-
-            posthog.capture('daily_started');
-
-        } catch (error) {
-            if (isTerminal) {
-                this.renderer.writeln('\x1b[31mERROR: Unable to start daily challenge\x1b[0m');
-                this.renderer.writeln('');
-                this.printPrompt();
-                this.focusTerminal();
-            }
-        }
-    }
-
     async submitAction(actionId) {
         const isTerminal = !this.renderer.printNode;
 
@@ -1007,7 +996,6 @@ ${BASE_URL}`;
             this.renderer.write('.');
             await new Promise(r => setTimeout(r, 150));
             
-            this.renderer.writeln('');
             this.renderer.writeln('');
         }
 
@@ -1188,12 +1176,14 @@ ${BASE_URL}`;
 export { GameClient, isMobileDevice };
 
 document.addEventListener('DOMContentLoaded', () => {
+    getAnonymousId();
+    
     const isMobile = isMobileDevice();
     document.body.dataset.deviceType = isMobile ? 'mobile' : 'desktop'; // Used for CSS styling
 
     let renderer;
     if (isMobile) {
-        renderer = new MobileRenderer();
+        renderer = new MobileRenderer(anonymousId);
     } else {
         renderer = new DesktopRenderer();
     }

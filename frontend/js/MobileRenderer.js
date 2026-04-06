@@ -1,8 +1,9 @@
 import { Renderer } from './Renderer.js';
 
 export class MobileRenderer extends Renderer {
-    constructor() {
+    constructor(anonymousId = null) {
         super();
+        this._anonymousId = anonymousId;
         this._state = {
             view: 'welcome',
             scenarios: [],
@@ -248,11 +249,13 @@ export class MobileRenderer extends Renderer {
         }
     }
 
-    _renderLeaderboardItem(rank, leader) {
+    _renderLeaderboardItem(rank, leader, isCurrentUser) {
+        const displayRank = isCurrentUser ? '->' : rank;
+        const userClass = isCurrentUser ? 'leaderboard-user current-user' : 'leaderboard-user';
         return `
             <div class="leaderboard-row">
-                <span class="leaderboard-rank">${rank}</span>
-                <span class="leaderboard-user">${this._escapeHtml(leader.user)}</span>
+                <span class="leaderboard-rank">${displayRank}</span>
+                <span class="${userClass}">${this._escapeHtml(leader.user)}</span>
                 <span class="leaderboard-score">${leader.solved} solved</span>
             </div>
         `;
@@ -323,7 +326,8 @@ export class MobileRenderer extends Renderer {
 
         let html = '';
         leaders.forEach((leader, index) => {
-            html += this._renderLeaderboardItem(index + 1, leader);
+            const isCurrentUser = leader.user === `anon_${this._anonymousId.substring(0, 8)}`;
+            html += this._renderLeaderboardItem(index + 1, leader, isCurrentUser);
         });
         leaderboardContainer.innerHTML = html;
     }
